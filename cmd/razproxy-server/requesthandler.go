@@ -17,12 +17,12 @@ type requestHandler struct {
 }
 
 func (rh *requestHandler) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
-	go rh.logRequest(req)
+	go rh.logRequest(req.RemoteAddr.String(), " -> ", req.DestAddr.String())
 	return ctx, !isPrivateIP(req.DestAddr.IP)
 }
 
 func (rh *requestHandler) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
-	log.Println("DNS request:", name)
+	go rh.logRequest("DNS request:", name)
 	addr, err := net.ResolveIPAddr("ip", name)
 	if err != nil {
 		return ctx, nil, err
@@ -30,7 +30,7 @@ func (rh *requestHandler) Resolve(ctx context.Context, name string) (context.Con
 	return ctx, addr.IP, err
 }
 
-func (rh *requestHandler) logRequest(req *socks5.Request) {
+func (rh *requestHandler) logRequest(a ...interface{}) {
 	rh.mtx.Lock()
 	defer rh.mtx.Unlock()
 
@@ -38,7 +38,7 @@ func (rh *requestHandler) logRequest(req *socks5.Request) {
 		rh.reqLogFilter = make(map[string]bool)
 	}
 
-	reqStr := fmt.Sprint(req.RemoteAddr.String(), "->", req.DestAddr.String())
+	reqStr := fmt.Sprint(a...)
 	if !rh.reqLogFilter[reqStr] {
 		rh.reqLogFilter[reqStr] = true
 		log.Println(reqStr)
