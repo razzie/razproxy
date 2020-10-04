@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strconv"
 
 	"github.com/armon/go-socks5"
@@ -34,6 +35,8 @@ func init() {
 	if _, port, _ := net.SplitHostPort(ServerAddr); len(port) == 0 {
 		ServerAddr += ":9820"
 	}
+
+	log.SetOutput(os.Stdout)
 }
 
 type smuxDialer struct {

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/armon/go-socks5"
 	"github.com/xtaci/smux"
@@ -26,6 +27,8 @@ func init() {
 	flag.StringVar(&User, "user", "", "Username for auth (optional)")
 	flag.StringVar(&Password, "pw", "", "Password for auth (optional)")
 	flag.Parse()
+
+	log.SetOutput(os.Stdout)
 }
 
 func getCert() (tls.Certificate, error) {
