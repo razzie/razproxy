@@ -4,7 +4,7 @@
 all: client server
 
 client:
-	go build -mod=vendor -ldflags="-s -w" -gcflags=-trimpath=$(CURDIR) ./cmd/razproxy-client
+	CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w" -gcflags=-trimpath=$(CURDIR) ./cmd/razproxy-client
 
 server:
-	go build -mod=vendor -ldflags="-s -w" -gcflags=-trimpath=$(CURDIR) ./cmd/razproxy-server
+	CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w" -gcflags=-trimpath=$(CURDIR) ./cmd/razproxy-server
