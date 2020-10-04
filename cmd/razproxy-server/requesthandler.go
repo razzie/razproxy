@@ -18,7 +18,7 @@ type requestHandler struct {
 
 func (rh *requestHandler) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
 	go rh.logRequest(req)
-	return ctx, true
+	return ctx, !isPrivateIP(req.DestAddr.IP)
 }
 
 func (rh *requestHandler) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
