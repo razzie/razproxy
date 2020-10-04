@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/armon/go-socks5"
 	"github.com/xtaci/smux"
@@ -59,19 +60,19 @@ func main() {
 
 		fmt.Print("Server address: ")
 		ServerAddr, _ = reader.ReadString('\n')
-		ServerAddr = ServerAddr[:len(ServerAddr)-1]
+		ServerAddr = strings.TrimRight(ServerAddr, "\r\n")
 
 		fmt.Print("User (optional): ")
 		User, _ = reader.ReadString('\n')
-		User = User[:len(User)-1]
+		User = strings.TrimRight(User, "\r\n")
 
 		fmt.Print("Password (optional): ")
 		Password, _ = reader.ReadString('\n')
-		Password = Password[:len(Password)-1]
+		Password = strings.TrimRight(Password, "\r\n")
 
 		fmt.Print("Local SOCKS5 port (1080): ")
 		Port, _ := reader.ReadString('\n')
-		Port = Port[:len(Port)-1]
+		Port = strings.TrimRight(Port, "\r\n")
 		if len(Port) > 0 {
 			LocalPort, _ = strconv.Atoi(Port)
 		}
