@@ -3,15 +3,12 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"log"
 	"math/big"
 	"time"
-
-	"github.com/armon/go-socks5"
 )
 
 func genTLSCert(name, org string) ([]byte, []byte) {
@@ -50,34 +47,4 @@ func genTLSCert(name, org string) ([]byte, []byte) {
 	})
 
 	return certPem, keyPem
-}
-
-func main() {
-	conf := &socks5.Config{}
-	server, err := socks5.New(conf)
-	if err != nil {
-		panic(err)
-	}
-
-	cer, err := tls.X509KeyPair(genTLSCert("name", "org"))
-	if err != nil {
-		panic(err)
-	}
-
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
-	ln, err := tls.Listen("tcp", ":8000", config)
-	if err != nil {
-		panic(err)
-	}
-	defer ln.Close()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Println("Connection error:", err)
-			continue
-		}
-		//log.Println(conn.RemoteAddr(), "connected!")
-		go server.ServeConn(conn)
-	}
 }
