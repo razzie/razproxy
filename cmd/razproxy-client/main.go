@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"io/ioutil"
+	"log"
 	"net"
 	"strconv"
 
 	"github.com/armon/go-socks5"
+	"github.com/xtaci/smux"
 	"golang.org/x/net/proxy"
 )
 
@@ -33,6 +36,22 @@ func init() {
 	}
 }
 
+type smuxDialer struct {
+	session *smux.Session
+}
+
+func newSmuxDialer(conn net.Conn) (*smuxDialer, error) {
+	session, err := smux.Client(conn, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &smuxDialer{session: session}, nil
+}
+
+func (d *smuxDialer) Dial(network, addr string) (net.Conn, error) {
+	return d.session.OpenStream()
+}
+
 func main() {
 	var auth *proxy.Auth
 	if len(User) > 0 {
@@ -45,7 +64,15 @@ func main() {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: SkipTLSVerify,
 	}
-	dialer, err := proxy.SOCKS5("tcp", ServerAddr, auth, &tlsDialer{Config: tlsConf})
+	conn, err := tls.Dial("tcp", ServerAddr, tlsConf)
+	if err != nil {
+		panic(err)
+	}
+	smuxDialer, err := newSmuxDialer(conn)
+	if err != nil {
+		panic(err)
+	}
+	dialer, err := proxy.SOCKS5("tcp", ServerAddr, auth, smuxDialer)
 	if err != nil {
 		panic(err)
 	}
@@ -54,6 +81,7 @@ func main() {
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return dialer.Dial(network, addr)
 		},
+		Logger: log.New(ioutil.Discard, "", 0),
 	}
 	server, err := socks5.New(conf)
 	if err != nil {

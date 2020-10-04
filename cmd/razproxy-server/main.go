@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"io/ioutil"
 	"log"
 
 	"github.com/armon/go-socks5"
+	"github.com/xtaci/smux"
 )
 
 // command line args
@@ -33,8 +35,25 @@ func getCert() (tls.Certificate, error) {
 	return tls.LoadX509KeyPair(CertFile, KeyFile)
 }
 
+func handleSession(server *socks5.Server, session *smux.Session) {
+	defer session.Close()
+	for {
+		stream, err := session.AcceptStream()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		go func() {
+			defer stream.Close()
+			server.ServeConn(stream)
+		}()
+	}
+}
+
 func main() {
-	conf := &socks5.Config{}
+	conf := &socks5.Config{
+		Logger: log.New(ioutil.Discard, "", 0),
+	}
 	if len(User) > 0 {
 		conf.Credentials = authenticator{User: Password}
 	}
@@ -58,9 +77,15 @@ func main() {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Println("Connection error:", err)
+			log.Println(err)
 			continue
 		}
-		go server.ServeConn(conn)
+		session, err := smux.Server(conn, nil)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		log.Println(conn.RemoteAddr(), "connected")
+		go handleSession(server, session)
 	}
 }
