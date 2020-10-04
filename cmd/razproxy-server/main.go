@@ -51,8 +51,11 @@ func handleSession(server *socks5.Server, session *smux.Session) {
 }
 
 func main() {
+	rh := &requestHandler{}
 	conf := &socks5.Config{
-		Logger: log.New(ioutil.Discard, "", 0),
+		Resolver: rh,
+		Rules:    rh,
+		Logger:   log.New(ioutil.Discard, "", 0),
 	}
 	if len(User) > 0 {
 		conf.Credentials = authenticator{User: Password}
