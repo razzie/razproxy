@@ -81,6 +81,7 @@ func main() {
 	}
 
 	conf := &socks5.Config{
+		Resolver: &fakeDNS{},
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return dialer.Dial(network, addr)
 		},
