@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -32,10 +34,6 @@ func init() {
 	flag.BoolVar(&SkipTLSVerify, "skip-tls-verify", false, "Skip TLC cert verification")
 	flag.Parse()
 
-	if _, port, _ := net.SplitHostPort(ServerAddr); len(port) == 0 {
-		ServerAddr += ":9820"
-	}
-
 	log.SetOutput(os.Stdout)
 }
 
@@ -56,6 +54,33 @@ func (d *smuxDialer) Dial(network, addr string) (net.Conn, error) {
 }
 
 func main() {
+	if len(ServerAddr) == 0 {
+		reader := bufio.NewReader(os.Stdin)
+
+		fmt.Print("Server address: ")
+		ServerAddr, _ = reader.ReadString('\n')
+		ServerAddr = ServerAddr[:len(ServerAddr)-1]
+
+		fmt.Print("User (optional): ")
+		User, _ = reader.ReadString('\n')
+		User = User[:len(User)-1]
+
+		fmt.Print("Password (optional): ")
+		Password, _ = reader.ReadString('\n')
+		Password = Password[:len(Password)-1]
+
+		fmt.Print("Local SOCKS5 port (1080): ")
+		Port, _ := reader.ReadString('\n')
+		Port = Port[:len(Port)-1]
+		if len(Port) > 0 {
+			LocalPort, _ = strconv.Atoi(Port)
+		}
+	}
+
+	if _, port, _ := net.SplitHostPort(ServerAddr); len(port) == 0 {
+		ServerAddr += ":9820"
+	}
+
 	var auth *proxy.Auth
 	if len(User) > 0 {
 		auth = &proxy.Auth{
@@ -79,6 +104,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("Connected!")
 
 	conf := &socks5.Config{
 		Resolver: &fakeDNS{},
