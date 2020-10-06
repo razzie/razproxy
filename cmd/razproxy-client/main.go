@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -55,9 +56,9 @@ func (d *smuxDialer) Dial(network, addr string) (net.Conn, error) {
 }
 
 func main() {
-	if len(ServerAddr) == 0 {
-		reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(os.Stdin)
 
+	if len(ServerAddr) == 0 {
 		fmt.Print("Server address: ")
 		ServerAddr, _ = reader.ReadString('\n')
 		ServerAddr = strings.TrimRight(ServerAddr, "\r\n")
@@ -95,7 +96,21 @@ func main() {
 	}
 	conn, err := tls.Dial("tcp", ServerAddr, tlsConf)
 	if err != nil {
-		panic(err)
+		if _, certErr := err.(x509.UnknownAuthorityError); !certErr {
+			panic(err)
+		}
+		fmt.Println(err)
+		fmt.Print("Would you like to continue? (y/N): ")
+		cont, _, _ := reader.ReadRune()
+		if cont == 'y' || cont == 'Y' {
+			tlsConf.InsecureSkipVerify = true
+			conn, err = tls.Dial("tcp", ServerAddr, tlsConf)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			return
+		}
 	}
 	smuxDialer, err := newSmuxDialer(conn)
 	if err != nil {
