@@ -31,11 +31,15 @@ func init() {
 	log.SetOutput(os.Stdout)
 }
 
-func getCert() (tls.Certificate, error) {
-	if len(CertFile) == 0 || len(KeyFile) == 0 {
-		return tls.X509KeyPair(genTLSCert("razproxy", ""))
+func getCert() (*tls.Certificate, error) {
+	if len(CertFile) > 0 {
+		if len(KeyFile) == 0 {
+			return LoadCertficateAndKeyFromFile(CertFile)
+		}
+		return GenerateCertificate("razproxy", "")
 	}
-	return tls.LoadX509KeyPair(CertFile, KeyFile)
+	cert, err := tls.LoadX509KeyPair(CertFile, KeyFile)
+	return &cert, err
 }
 
 func handleSession(server *socks5.Server, session *smux.Session) {
@@ -73,7 +77,7 @@ func main() {
 		panic(err)
 	}
 
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config := &tls.Config{Certificates: []tls.Certificate{*cer}}
 	ln, err := tls.Listen("tcp", ServerAddr, config)
 	if err != nil {
 		panic(err)
