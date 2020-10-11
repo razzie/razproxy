@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/armon/go-socks5"
+	"github.com/razzie/razproxy"
 	"github.com/xtaci/smux"
 )
 
@@ -34,9 +35,9 @@ func init() {
 func getCert() (*tls.Certificate, error) {
 	if len(CertFile) > 0 {
 		if len(KeyFile) == 0 {
-			return LoadCertficateAndKeyFromFile(CertFile)
+			return razproxy.LoadCertficateAndKeyFromFile(CertFile)
 		}
-		return GenerateCertificate("razproxy", "")
+		return razproxy.GenerateCertificate("razproxy", "")
 	}
 	cert, err := tls.LoadX509KeyPair(CertFile, KeyFile)
 	return &cert, err
