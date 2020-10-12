@@ -37,10 +37,10 @@ func getCert() (*tls.Certificate, error) {
 		if len(KeyFile) == 0 {
 			return razproxy.LoadCertficateAndKeyFromFile(CertFile)
 		}
-		return razproxy.GenerateCertificate("razproxy", "")
+		cert, err := tls.LoadX509KeyPair(CertFile, KeyFile)
+		return &cert, err
 	}
-	cert, err := tls.LoadX509KeyPair(CertFile, KeyFile)
-	return &cert, err
+	return razproxy.GenerateCertificate("razproxy", "")
 }
 
 func handleSession(server *socks5.Server, session *smux.Session) {
