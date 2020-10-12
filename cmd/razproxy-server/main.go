@@ -3,13 +3,10 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"io/ioutil"
 	"log"
 	"os"
 
-	"github.com/armon/go-socks5"
 	"github.com/razzie/razproxy"
-	"github.com/xtaci/smux"
 )
 
 // command line args
@@ -43,60 +40,19 @@ func getCert() (*tls.Certificate, error) {
 	return razproxy.GenerateCertificate("razproxy", "")
 }
 
-func handleSession(server *socks5.Server, session *smux.Session) {
-	defer session.Close()
-	for {
-		stream, err := session.AcceptStream()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		go func() {
-			defer stream.Close()
-			server.ServeConn(stream)
-		}()
-	}
-}
-
 func main() {
-	rh := &requestHandler{}
-	conf := &socks5.Config{
-		Resolver: rh,
-		Rules:    rh,
-		Logger:   log.New(ioutil.Discard, "", 0),
+	cert, err := getCert()
+	if err != nil {
+		panic(err)
 	}
+
+	var auth razproxy.Authenticator
 	if len(User) > 0 {
-		conf.Credentials = authenticator{User: Password}
-	}
-	server, err := socks5.New(conf)
-	if err != nil {
-		panic(err)
+		auth = razproxy.BasicAuthenticator{User: Password}
 	}
 
-	cer, err := getCert()
-	if err != nil {
+	srv, err := razproxy.NewServer(auth, *cert)
+	if err := srv.ListenAndServe(ServerAddr); err != nil {
 		panic(err)
-	}
-
-	config := &tls.Config{Certificates: []tls.Certificate{*cer}}
-	ln, err := tls.Listen("tcp", ServerAddr, config)
-	if err != nil {
-		panic(err)
-	}
-	defer ln.Close()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		session, err := smux.Server(conn, nil)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		log.Println(conn.RemoteAddr(), "connected")
-		go handleSession(server, session)
 	}
 }
