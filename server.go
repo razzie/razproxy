@@ -61,12 +61,12 @@ func (s *Server) ListenAndServe(address string) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Println(err)
+			log.Println("connection accept error:", err)
 			continue
 		}
 		session, err := smux.Server(conn, nil)
 		if err != nil {
-			log.Println(err)
+			log.Println("smux error:", err)
 			continue
 		}
 		log.Println(conn.RemoteAddr(), "connected")
@@ -79,7 +79,7 @@ func (s *Server) handleSession(session *smux.Session) {
 	for {
 		stream, err := session.AcceptStream()
 		if err != nil {
-			log.Println(err)
+			log.Println("stream error:", err)
 			return
 		}
 		go func() {
