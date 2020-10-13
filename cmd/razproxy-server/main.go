@@ -3,8 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"log"
-	"os"
 
 	"github.com/razzie/razproxy"
 )
@@ -25,8 +23,6 @@ func init() {
 	flag.StringVar(&User, "user", "", "Username for auth (optional)")
 	flag.StringVar(&Password, "pw", "", "Password for auth (optional)")
 	flag.Parse()
-
-	log.SetOutput(os.Stdout)
 }
 
 func getCert() (*tls.Certificate, error) {

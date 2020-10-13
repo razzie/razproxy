@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/armon/go-socks5"
 	"github.com/xtaci/smux"
@@ -14,6 +15,7 @@ type Server struct {
 	socks5Conf *socks5.Config
 	socks5Srv  *socks5.Server
 	tlsConf    *tls.Config
+	Logger     *log.Logger
 }
 
 // NewServer returns a new Server
@@ -43,11 +45,14 @@ func NewServer(auth Authenticator, certs ...tls.Certificate) (*Server, error) {
 		Certificates: certs,
 	}
 
-	return &Server{
+	srv := &Server{
 		socks5Conf: socks5Conf,
 		socks5Srv:  socks5Srv,
 		tlsConf:    tlsConf,
-	}, nil
+		Logger:     log.New(os.Stdout, "", log.LstdFlags),
+	}
+	rh.srv = srv
+	return srv, nil
 }
 
 // ListenAndServe starts listening and serving requests on a given network address
@@ -61,15 +66,15 @@ func (s *Server) ListenAndServe(address string) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Println("connection accept error:", err)
+			s.Logger.Println("connection accept error:", err)
 			continue
 		}
 		session, err := smux.Server(conn, nil)
 		if err != nil {
-			log.Println("smux error:", err)
+			s.Logger.Println("smux error:", err)
 			continue
 		}
-		log.Println(conn.RemoteAddr(), "connected")
+		s.Logger.Println(conn.RemoteAddr(), "connected")
 		go s.handleSession(session)
 	}
 }
@@ -79,7 +84,7 @@ func (s *Server) handleSession(session *smux.Session) {
 	for {
 		stream, err := session.AcceptStream()
 		if err != nil {
-			log.Println("stream error:", err)
+			s.Logger.Println("stream error:", err)
 			return
 		}
 		go func() {

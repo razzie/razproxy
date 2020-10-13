@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ type Client struct {
 	conn         *tls.Conn
 	dialer       proxy.Dialer
 	reconnecting bool
+	Logger       *log.Logger
 }
 
 // NewClient returns a new Client
@@ -47,6 +49,7 @@ func NewClient(serverAddr string, conf *ClientConfig) (*Client, error) {
 	c := &Client{
 		serverAddr: serverAddr,
 		conf:       conf,
+		Logger:     log.New(os.Stdout, "", log.LstdFlags),
 	}
 	err := c.connect()
 	if err != nil {
@@ -110,6 +113,7 @@ func (c *Client) connect() error {
 
 	c.conn = conn
 	c.dialer = socks5Dialer
+	c.Logger.Println("connected")
 	return nil
 }
 
@@ -130,10 +134,13 @@ func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, erro
 			return nil
 		}
 
+		c.Logger.Println("disconnected")
 		c.reconnecting = true
+
 		go func() {
 			for {
 				<-time.NewTimer(time.Second).C
+				c.Logger.Println("reconnecting..")
 				if err := reconnect(); err == nil {
 					return
 				}
@@ -160,7 +167,7 @@ func (c *Client) ListenAndServe(port uint16) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println(err)
+			c.Logger.Println(err)
 			continue
 		}
 		go c.socks5Srv.ServeConn(conn)

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -28,8 +27,6 @@ func init() {
 	flag.StringVar(&Password, "pw", "", "Password for auth")
 	flag.BoolVar(&SkipTLSVerify, "skip-tls-verify", false, "Skip TLC cert verification")
 	flag.Parse()
-
-	log.SetOutput(os.Stdout)
 }
 
 func main() {
@@ -80,7 +77,6 @@ func main() {
 	}
 	defer c.Close()
 
-	fmt.Println("Connected")
 	if err := c.ListenAndServe(uint16(LocalPort)); err != nil {
 		panic(err)
 	}

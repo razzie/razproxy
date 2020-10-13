@@ -3,7 +3,6 @@ package razproxy
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 type requestHandler struct {
 	mtx          sync.Mutex
 	reqLogFilter map[string]bool
+	srv          *Server
 }
 
 func (rh *requestHandler) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
@@ -41,7 +41,7 @@ func (rh *requestHandler) logRequest(a ...interface{}) {
 	reqStr := fmt.Sprint(a...)
 	if !rh.reqLogFilter[reqStr] {
 		rh.reqLogFilter[reqStr] = true
-		log.Println(reqStr)
+		rh.srv.Logger.Println(reqStr)
 		go func() {
 			<-time.NewTimer(time.Minute * 5).C
 			rh.mtx.Lock()
