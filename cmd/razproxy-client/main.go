@@ -29,10 +29,6 @@ func init() {
 	flag.BoolVar(&SkipTLSVerify, "skip-tls-verify", false, "Skip TLC cert verification")
 	flag.Parse()
 
-	if len(ServerAddr) == 0 {
-		ServerAddr = "localhost"
-	}
-
 	log.SetOutput(os.Stdout)
 }
 
@@ -72,6 +68,10 @@ func main() {
 		if len(Port) > 0 {
 			LocalPort, _ = strconv.Atoi(Port)
 		}
+	}
+
+	if len(ServerAddr) == 0 {
+		ServerAddr = "localhost"
 	}
 
 	c, err := razproxy.NewClient(ServerAddr, cfg)
