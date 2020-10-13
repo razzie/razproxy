@@ -64,9 +64,9 @@ func NewClient(serverAddr string, conf *ClientConfig) (*Client, error) {
 
 func (c *Client) connect() error {
 	tlsConf := &tls.Config{
-		ServerName:         c.serverAddr,
 		InsecureSkipVerify: c.conf.SkipCertVerify,
 	}
+	tlsConf.ServerName, _, _ = net.SplitHostPort(c.serverAddr)
 	conn, err := tls.Dial("tcp", c.serverAddr, tlsConf)
 	if err != nil {
 		if _, certErr := err.(x509.UnknownAuthorityError); !certErr || c.conf.PromptSkipCertVerify == nil {
