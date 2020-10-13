@@ -78,6 +78,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer c.Close()
 
 	fmt.Println("Connected")
 	if err := c.ListenAndServe(uint16(LocalPort)); err != nil {

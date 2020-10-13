@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/armon/go-socks5"
 	"golang.org/x/net/proxy"
@@ -23,11 +25,13 @@ type ClientConfig struct {
 
 // Client ...
 type Client struct {
-	serverAddr string
-	conf       *ClientConfig
-	conn       *tls.Conn
-	dialer     proxy.Dialer
-	socks5Srv  *socks5.Server
+	serverAddr   string
+	conf         *ClientConfig
+	socks5Srv    *socks5.Server
+	mtx          sync.Mutex
+	conn         *tls.Conn
+	dialer       proxy.Dialer
+	reconnecting bool
 }
 
 // NewClient returns a new Client
@@ -85,7 +89,7 @@ func (c *Client) connect() error {
 		}
 	}
 
-	smuxDialer, err := newSmuxDialer(autoReconnect(conn, tlsConf))
+	smuxDialer, err := newSmuxDialer(conn)
 	if err != nil {
 		conn.Close()
 		return err
@@ -111,11 +115,39 @@ func (c *Client) connect() error {
 
 // Dial ...
 func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	return c.dialer.Dial(network, addr)
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	conn, err := c.dialer.Dial(network, addr)
+	if err, ok := err.(net.Error); !c.reconnecting && ok && !err.Temporary() {
+		reconnect := func() error {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+			if err := c.connect(); err != nil {
+				return err
+			}
+			c.reconnecting = false
+			return nil
+		}
+
+		c.reconnecting = true
+		go func() {
+			for {
+				<-time.NewTimer(time.Second).C
+				if err := reconnect(); err == nil {
+					return
+				}
+			}
+		}()
+	}
+	return conn, err
 }
 
 // Close closes the connection to the server
 func (c *Client) Close() error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	return c.conn.Close()
 }
 
