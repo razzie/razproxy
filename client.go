@@ -85,7 +85,7 @@ func (c *Client) connect() error {
 		}
 	}
 
-	smuxDialer, err := newSmuxDialer(conn)
+	smuxDialer, err := newSmuxDialer(autoReconnect(conn, tlsConf))
 	if err != nil {
 		conn.Close()
 		return err
@@ -121,5 +121,17 @@ func (c *Client) Close() error {
 
 // ListenAndServe opens a local SOCKS5 port that listens to and transmits requests to the server
 func (c *Client) ListenAndServe(port uint16) error {
-	return c.socks5Srv.ListenAndServe("tcp", "localhost:"+strconv.Itoa(int(port)))
+	l, err := net.Listen("tcp", "localhost:"+strconv.Itoa(int(port)))
+	if err != nil {
+		return err
+	}
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		go c.socks5Srv.ServeConn(conn)
+	}
+	return nil
 }
