@@ -134,6 +134,11 @@ func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, erro
 			return nil
 		}
 
+		if err, ok := err.(*net.OpError); ok && err.Op == "socks connect" {
+			c.Logger.Println("socks connection error - probably incorrect user/password")
+		}
+
+		c.conn.Close()
 		c.Logger.Println("disconnected")
 		c.reconnecting = true
 
@@ -172,5 +177,4 @@ func (c *Client) ListenAndServe(port uint16) error {
 		}
 		go c.socks5Srv.ServeConn(conn)
 	}
-	return nil
 }
