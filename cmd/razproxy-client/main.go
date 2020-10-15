@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/razzie/razproxy"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // command line args
@@ -30,7 +31,6 @@ func init() {
 }
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
 	cfg := &razproxy.ClientConfig{
 		User:           User,
 		Password:       Password,
@@ -38,6 +38,7 @@ func main() {
 	}
 
 	if len(os.Args) == 1 {
+		reader := bufio.NewReader(os.Stdin)
 		cfg.PromptSkipCertVerify = func() bool {
 			fmt.Println("Server certificate cannot be verified")
 			fmt.Print("Would you like to continue? (y/N): ")
@@ -55,8 +56,14 @@ func main() {
 		cfg.User = User
 
 		fmt.Print("Password (optional): ")
-		Password, _ = reader.ReadString('\n')
-		Password = strings.TrimRight(Password, "\r\n")
+		bytePassword, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			Password, _ = reader.ReadString('\n')
+			Password = strings.TrimRight(Password, "\r\n")
+		} else {
+			Password = string(bytePassword)
+			fmt.Println()
+		}
 		cfg.Password = Password
 
 		fmt.Print("Local SOCKS5 port (1080): ")
