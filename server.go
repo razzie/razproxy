@@ -12,10 +12,11 @@ import (
 
 // Server ...
 type Server struct {
-	socks5Conf *socks5.Config
-	socks5Srv  *socks5.Server
-	tlsConf    *tls.Config
-	Logger     *log.Logger
+	socks5Conf  *socks5.Config
+	socks5Srv   *socks5.Server
+	tlsConf     *tls.Config
+	Logger      *log.Logger
+	ExternalDNS string
 }
 
 // NewServer returns a new Server
