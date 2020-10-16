@@ -2,6 +2,8 @@
 github.com/armon/go-socks5
 # github.com/miekg/dns v1.1.33
 github.com/miekg/dns
+# github.com/razzie/babble v0.0.0-20201015224220-210f32b7a231
+github.com/razzie/babble
 # github.com/xtaci/smux v1.5.14
 github.com/xtaci/smux
 # golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
