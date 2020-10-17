@@ -2,7 +2,6 @@ package razproxy
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"io/ioutil"
 	"log"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/armon/go-socks5"
-	"golang.org/x/net/proxy"
 )
 
 // ClientConfig ...
@@ -30,8 +28,7 @@ type Client struct {
 	conf         *ClientConfig
 	socks5Srv    *socks5.Server
 	mtx          sync.Mutex
-	conn         *tls.Conn
-	dialer       proxy.Dialer
+	session      *ClientSession
 	reconnecting bool
 	Logger       *log.Logger
 }
@@ -70,11 +67,7 @@ func NewClient(serverAddr string, conf *ClientConfig) (*Client, error) {
 }
 
 func (c *Client) connect() error {
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: c.conf.SkipCertVerify,
-	}
-	tlsConf.ServerName, _, _ = net.SplitHostPort(c.serverAddr)
-	conn, err := tls.Dial("tcp", c.serverAddr, tlsConf)
+	session, err := c.newSession()
 	if err != nil {
 		if _, certErr := err.(x509.UnknownAuthorityError); !certErr || c.conf.PromptSkipCertVerify == nil {
 			return err
@@ -82,8 +75,7 @@ func (c *Client) connect() error {
 		cont := c.conf.PromptSkipCertVerify()
 		if cont {
 			c.conf.SkipCertVerify = true
-			tlsConf.InsecureSkipVerify = true
-			conn, err = tls.Dial("tcp", c.serverAddr, tlsConf)
+			session, err = c.newSession()
 			if err != nil {
 				return err
 			}
@@ -92,27 +84,7 @@ func (c *Client) connect() error {
 		}
 	}
 
-	smuxDialer, err := newSmuxDialer(conn)
-	if err != nil {
-		conn.Close()
-		return err
-	}
-
-	var auth *proxy.Auth
-	if len(c.conf.User) > 0 {
-		auth = &proxy.Auth{
-			User:     c.conf.User,
-			Password: c.conf.Password,
-		}
-	}
-	socks5Dialer, err := proxy.SOCKS5("tcp", c.serverAddr, auth, smuxDialer)
-	if err != nil {
-		conn.Close()
-		return err
-	}
-
-	c.conn = conn
-	c.dialer = socks5Dialer
+	c.session = session
 	c.Logger.Println("connected")
 	return nil
 }
@@ -122,7 +94,7 @@ func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, erro
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	conn, err := c.dialer.Dial(network, addr)
+	conn, err := c.session.Dial(ctx, network, addr)
 	if err, ok := err.(net.Error); !c.reconnecting && ok && !err.Temporary() {
 		reconnect := func() error {
 			c.mtx.Lock()
@@ -138,7 +110,7 @@ func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, erro
 			c.Logger.Println("socks connection error - probably incorrect user/password")
 		}
 
-		c.conn.Close()
+		c.session.Close()
 		c.Logger.Println("disconnected")
 		c.reconnecting = true
 
@@ -160,7 +132,7 @@ func (c *Client) Close() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	return c.conn.Close()
+	return c.session.Close()
 }
 
 // ListenAndServe opens a local SOCKS5 port that listens to and transmits requests to the server
