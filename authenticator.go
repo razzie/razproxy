@@ -13,3 +13,11 @@ func (auth BasicAuthenticator) Valid(user, password string) bool {
 	pw, ok := auth[user]
 	return ok && pw == password
 }
+
+// NilAuthenticator ...
+type NilAuthenticator struct{}
+
+// Valid ...
+func (auth NilAuthenticator) Valid(user, password string) bool {
+	return user == "" && password == ""
+}

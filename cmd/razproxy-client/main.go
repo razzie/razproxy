@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/razzie/razproxy"
 	"golang.org/x/crypto/ssh/terminal"
@@ -39,6 +40,8 @@ func main() {
 
 	if len(os.Args) == 1 {
 		reader := bufio.NewReader(os.Stdin)
+		defer time.Sleep(time.Second * 10)
+
 		cfg.PromptSkipCertVerify = func() bool {
 			fmt.Println("Server certificate cannot be verified")
 			fmt.Print("Would you like to continue? (y/N): ")
@@ -80,11 +83,12 @@ func main() {
 
 	c, err := razproxy.NewClient(ServerAddr, cfg)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
-	defer c.Close()
 
 	if err := c.ListenAndServe(uint16(LocalPort)); err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 }

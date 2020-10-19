@@ -1,22 +1,20 @@
 package razproxy
 
 import (
-	"context"
 	"crypto/tls"
+	"io"
 	"net"
+	"net/rpc"
 
 	"github.com/xtaci/smux"
-	"golang.org/x/net/proxy"
 )
 
-// ClientSession ...
-type ClientSession struct {
-	client  *Client
-	conn    *tls.Conn
+type clientSession struct {
+	id      string
 	session *smux.Session
 }
 
-func (c *Client) newSession() (*ClientSession, error) {
+func (c *Client) newSession() (s *clientSession, err error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: c.conf.SkipCertVerify,
 	}
@@ -26,38 +24,70 @@ func (c *Client) newSession() (*ClientSession, error) {
 		return nil, err
 	}
 
+	defer func() {
+		if err != nil {
+			conn.Close()
+		}
+	}()
+
 	session, err := smux.Client(conn, nil)
 	if err != nil {
-		conn.Close()
-		return nil, err
+		return
 	}
 
-	return &ClientSession{
-		client:  c,
-		conn:    conn,
+	rpcConn, err := session.OpenStream()
+	if err != nil {
+		return
+	}
+
+	rpcClient := rpc.NewClient(rpcConn)
+	authReq := &AuthRequest{
+		User:     c.conf.User,
+		Password: c.conf.Password,
+	}
+	authRes := new(AuthResult)
+	err = rpcClient.Call("RPC.Auth", authReq, authRes)
+	if err != nil {
+		return
+	}
+	if !authRes.OK {
+		return nil, ErrAuthFailed
+	}
+
+	return &clientSession{
+		id:      authRes.ID,
 		session: session,
 	}, nil
 }
 
-// Dial ...
-func (s *ClientSession) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	var auth *proxy.Auth
-	if len(s.client.conf.User) > 0 {
-		auth = &proxy.Auth{
-			User:     s.client.conf.User,
-			Password: s.client.conf.Password,
+func (s *clientSession) proxy(conn net.Conn) error {
+	stream, err := s.session.OpenStream()
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	errCh := make(chan error, 2)
+	go proxy(stream, conn, errCh)
+	go proxy(conn, stream, errCh)
+	for i := 0; i < 2; i++ {
+		if e := <-errCh; e != nil {
+			if e == io.ErrClosedPipe || e == smux.ErrTimeout {
+				continue
+			}
+			if e, ok := e.(net.Error); ok && e.Timeout() {
+				continue
+			}
+			if e, ok := e.(*net.OpError); ok && e.Source == conn.LocalAddr() {
+				continue
+			}
+			return e
 		}
 	}
-	dialer, err := proxy.SOCKS5("tcp", s.client.serverAddr, auth, &smuxDialer{session: s.session})
-	if err != nil {
-		return nil, err
-	}
-
-	return dialer.Dial(network, addr)
+	return nil
 }
 
 // Close ...
-func (s *ClientSession) Close() error {
-	s.session.Close()
-	return s.conn.Close()
+func (s *clientSession) Close() error {
+	return s.session.Close()
 }

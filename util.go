@@ -2,7 +2,11 @@ package razproxy
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"time"
+
+	"github.com/razzie/babble"
 )
 
 func getPrivateIPBlocks() (blocks []*net.IPNet) {
@@ -39,4 +43,43 @@ func isPrivateIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+/*func proxy(dst io.Writer, src io.Reader, errCh chan error) {
+	_, err := io.Copy(dst, src)
+	errCh <- err
+}*/
+
+func proxy(dst, src net.Conn, errCh chan error) {
+	var err error
+	buf := make([]byte, 32*1024)
+	for {
+		src.SetReadDeadline(time.Now().Add(time.Second * 10))
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			dst.SetWriteDeadline(time.Now().Add(time.Second * 10))
+			nw, ew := dst.Write(buf[0:nr])
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	errCh <- err
+}
+
+func uniqueID() string {
+	i := uint16(time.Now().UnixNano())
+	babbler := babble.NewBabbler()
+	return fmt.Sprintf("%s-%x", babbler.Babble(), i)
 }

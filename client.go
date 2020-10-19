@@ -1,18 +1,18 @@
 package razproxy
 
 import (
-	"context"
 	"crypto/x509"
-	"io/ioutil"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
-	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/armon/go-socks5"
 )
+
+// ErrAuthFailed ...
+var ErrAuthFailed = fmt.Errorf("authentication failed")
 
 // ClientConfig ...
 type ClientConfig struct {
@@ -26,11 +26,9 @@ type ClientConfig struct {
 type Client struct {
 	serverAddr   string
 	conf         *ClientConfig
-	socks5Srv    *socks5.Server
-	mtx          sync.Mutex
-	session      *ClientSession
-	reconnecting bool
 	Logger       *log.Logger
+	session      *clientSession
+	reconnecting int32 //bool
 }
 
 // NewClient returns a new Client
@@ -49,16 +47,6 @@ func NewClient(serverAddr string, conf *ClientConfig) (*Client, error) {
 		Logger:     log.New(os.Stdout, "", log.LstdFlags),
 	}
 	err := c.connect()
-	if err != nil {
-		return nil, err
-	}
-
-	socks5Conf := &socks5.Config{
-		Resolver: &fakeDNS{},
-		Dial:     c.Dial,
-		Logger:   log.New(ioutil.Discard, "", 0),
-	}
-	c.socks5Srv, err = socks5.New(socks5Conf)
 	if err != nil {
 		return nil, err
 	}
@@ -85,54 +73,35 @@ func (c *Client) connect() error {
 	}
 
 	c.session = session
-	c.Logger.Println("connected")
+	atomic.StoreInt32(&c.reconnecting, 0)
+	c.Logger.Println("connected as", session.id)
 	return nil
 }
 
-// Dial ...
-func (c *Client) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+func (c *Client) proxy(conn net.Conn) error {
+	for atomic.LoadInt32(&c.reconnecting) != 0 {
+		time.Sleep(time.Second)
+	}
 
-	conn, err := c.session.Dial(ctx, network, addr)
-	if err, ok := err.(net.Error); !c.reconnecting && ok && !err.Temporary() {
-		reconnect := func() error {
-			c.mtx.Lock()
-			defer c.mtx.Unlock()
-			if err := c.connect(); err != nil {
-				return err
-			}
-			c.reconnecting = false
-			return nil
+	err := c.session.proxy(conn)
+	if err != nil {
+		c.Logger.Println("proxy error:", err)
+		if err == ErrAuthFailed || !atomic.CompareAndSwapInt32(&c.reconnecting, 0, 1) {
+			return err
 		}
-
-		if err, ok := err.(*net.OpError); ok && err.Op == "socks connect" {
-			c.Logger.Println("socks connection error - probably incorrect user/password")
-		}
-
 		c.session.Close()
 		c.Logger.Println("disconnected")
-		c.reconnecting = true
-
 		go func() {
 			for {
-				<-time.NewTimer(time.Second).C
+				time.Sleep(time.Second)
 				c.Logger.Println("reconnecting..")
-				if err := reconnect(); err == nil {
+				if err := c.connect(); err == nil {
 					return
 				}
 			}
 		}()
 	}
-	return conn, err
-}
-
-// Close closes the connection to the server
-func (c *Client) Close() error {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	return c.session.Close()
+	return err
 }
 
 // ListenAndServe opens a local SOCKS5 port that listens to and transmits requests to the server
@@ -147,6 +116,12 @@ func (c *Client) ListenAndServe(port uint16) error {
 			c.Logger.Println(err)
 			continue
 		}
-		go c.socks5Srv.ServeConn(conn)
+		go func() {
+			defer conn.Close()
+			conn.SetDeadline(time.Time{})
+			if err := c.proxy(conn); err != nil {
+				c.Logger.Println("proxy error:", err)
+			}
+		}()
 	}
 }

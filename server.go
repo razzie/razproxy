@@ -29,6 +29,10 @@ func NewServer(auth Authenticator, certs ...tls.Certificate) (*Server, error) {
 		Certificates: certs,
 	}
 
+	if auth == nil {
+		auth = &NilAuthenticator{}
+	}
+
 	return &Server{
 		auth:    auth,
 		tlsConf: tlsConf,

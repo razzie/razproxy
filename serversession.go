@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/rpc"
 	"sync"
 	"time"
 
@@ -15,40 +16,39 @@ import (
 	"github.com/xtaci/smux"
 )
 
-// ServerSession ...
-type ServerSession struct {
-	id      string
-	srv     *Server
-	session *smux.Session
-
-	mtx          sync.Mutex
-	reqLogFilter map[string]bool
+type serverSession struct {
+	id            string
+	srv           *Server
+	session       *smux.Session
+	authenticated bool
+	logFilterMtx  sync.Mutex
+	logFilter     map[string]bool
 }
 
-func (s *Server) newSession(conn io.ReadWriteCloser) (*ServerSession, error) {
+func (s *Server) newSession(conn io.ReadWriteCloser) (*serverSession, error) {
 	session, err := smux.Server(conn, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ServerSession{
-		id:           UniqueID(),
-		srv:          s,
-		session:      session,
-		reqLogFilter: make(map[string]bool),
+	return &serverSession{
+		id:        uniqueID(),
+		srv:       s,
+		session:   session,
+		logFilter: make(map[string]bool),
 	}, nil
 }
 
-func (s *ServerSession) run() {
+func (s *serverSession) run() {
 	defer s.Close()
 
 	s.log(s.session.RemoteAddr().String(), " connected")
 
 	socks5Conf := &socks5.Config{
-		Credentials: s.srv.auth,
-		Resolver:    s,
-		Rules:       s,
-		Logger:      log.New(ioutil.Discard, "", 0),
+		//Credentials: s.srv.auth,
+		Resolver: s,
+		Rules:    s,
+		Logger:   log.New(ioutil.Discard, "", 0),
 	}
 	socks5Srv, err := socks5.New(socks5Conf)
 	if err != nil {
@@ -56,10 +56,33 @@ func (s *ServerSession) run() {
 		return
 	}
 
+	rpcServ := rpc.NewServer()
+	err = rpcServ.Register(&RPC{session: s})
+	if err != nil {
+		s.log("rpc error: ", err)
+		return
+	}
+
+	rpcConn, err := s.session.AcceptStream()
+	if err != nil {
+		s.log("stream error: ", err)
+		return
+	}
+	go func() {
+		defer rpcConn.Close()
+		rpcServ.ServeConn(rpcConn)
+	}()
+
 	for {
 		stream, err := s.session.AcceptStream()
 		if err != nil {
-			s.log("stream error: ", err)
+			if err != io.EOF {
+				s.log("stream error: ", err)
+			}
+			return
+		}
+		if !s.authenticated {
+			s.log("client not authenticated yet! - closing session")
 			return
 		}
 		go func() {
@@ -69,26 +92,39 @@ func (s *ServerSession) run() {
 	}
 }
 
-// Close implements io.Closer
-func (s *ServerSession) Close() error {
+func (s *serverSession) Close() error {
 	s.log("connection closed")
 	return s.session.Close()
 }
 
+func (s *serverSession) auth(user, pw string) (string, bool) {
+	s.authenticated = s.srv.auth.Valid(user, pw)
+	if s.authenticated {
+		s.log("auth successful")
+	} else {
+		s.log("auth failed - closing session")
+		go func() {
+			time.Sleep(time.Second)
+			s.session.Close()
+		}()
+	}
+	return s.id, s.authenticated
+}
+
 // Allow implements socks5.RuleSet
-func (s *ServerSession) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
+func (s *serverSession) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
 	go s.filterLog(req.DestAddr.String())
 	return ctx, !isPrivateIP(req.DestAddr.IP)
 }
 
 // Resolve implements socks5.NameResolver
-func (s *ServerSession) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+func (s *serverSession) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
 	ip, err := s.resolve(name)
 	go s.filterLog("DNS: ", name, " -> ", ip)
 	return ctx, ip, err
 }
 
-func (s *ServerSession) resolve(name string) (net.IP, error) {
+func (s *serverSession) resolve(name string) (net.IP, error) {
 	if len(s.srv.ExternalDNS) > 0 {
 		req := new(dns.Msg)
 		req.Id = dns.Id()
@@ -123,27 +159,27 @@ func (s *ServerSession) resolve(name string) (net.IP, error) {
 	return addr.IP, err
 }
 
-func (s *ServerSession) log(a ...interface{}) {
+func (s *serverSession) log(a ...interface{}) {
 	s.srv.Logger.Printf("[%s] %s", s.id, fmt.Sprint(a...))
 }
 
-func (s *ServerSession) filterLog(a ...interface{}) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+func (s *serverSession) filterLog(a ...interface{}) {
+	s.logFilterMtx.Lock()
+	defer s.logFilterMtx.Unlock()
 
-	if s.reqLogFilter == nil {
-		s.reqLogFilter = make(map[string]bool)
+	if s.logFilter == nil {
+		s.logFilter = make(map[string]bool)
 	}
 
 	reqStr := fmt.Sprint(a...)
-	if !s.reqLogFilter[reqStr] {
-		s.reqLogFilter[reqStr] = true
+	if !s.logFilter[reqStr] {
+		s.logFilter[reqStr] = true
 		s.srv.Logger.Printf("[%s] %s", s.id, reqStr)
 		go func() {
 			<-time.NewTimer(time.Minute * 5).C
-			s.mtx.Lock()
-			defer s.mtx.Unlock()
-			delete(s.reqLogFilter, reqStr)
+			s.logFilterMtx.Lock()
+			defer s.logFilterMtx.Unlock()
+			delete(s.logFilter, reqStr)
 		}()
 	}
 }
