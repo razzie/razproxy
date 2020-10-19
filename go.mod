@@ -11,5 +11,4 @@ require (
 	github.com/tjarratt/babble v0.0.0-20191209142150-eecdf8c2339d // indirect
 	github.com/xtaci/smux v1.5.14
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
 )
