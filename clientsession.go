@@ -67,19 +67,23 @@ func (s *clientSession) proxy(conn net.Conn) error {
 	}
 	defer stream.Close()
 
+	isExpectedErr := func(e error) bool {
+		if e == io.ErrClosedPipe || e == io.EOF {
+			return true
+		}
+		if e, ok := e.(*net.OpError); ok && e.Source == conn.LocalAddr() {
+			return true
+		}
+		return false
+	}
+
 	errCh := make(chan error, 2)
 	go proxy(stream, conn, errCh)
 	go proxy(conn, stream, errCh)
 	for i := 0; i < 2; i++ {
 		if e := <-errCh; e != nil {
-			if e == io.ErrClosedPipe || e == smux.ErrTimeout {
-				continue
-			}
-			if e, ok := e.(net.Error); ok && e.Timeout() {
-				continue
-			}
-			if e, ok := e.(*net.OpError); ok && e.Source == conn.LocalAddr() {
-				continue
+			if isExpectedErr(e) {
+				return nil
 			}
 			return e
 		}
