@@ -85,8 +85,7 @@ func (c *Client) proxy(conn net.Conn) error {
 
 	err := c.session.proxy(conn)
 	if err != nil {
-		c.Logger.Println("proxy error:", err)
-		if err == ErrAuthFailed || !atomic.CompareAndSwapInt32(&c.reconnecting, 0, 1) {
+		if !atomic.CompareAndSwapInt32(&c.reconnecting, 0, 1) {
 			return err
 		}
 		c.session.Close()
@@ -95,7 +94,11 @@ func (c *Client) proxy(conn net.Conn) error {
 			for {
 				time.Sleep(time.Second)
 				c.Logger.Println("reconnecting..")
-				if err := c.connect(); err == nil {
+				switch c.connect() {
+				case nil:
+					return
+				case ErrAuthFailed:
+					c.Logger.Println(ErrAuthFailed)
 					return
 				}
 			}
@@ -110,6 +113,20 @@ func (c *Client) ListenAndServe(port uint16) error {
 	if err != nil {
 		return err
 	}
+
+	errCh := make(chan error)
+	defer close(errCh)
+	go func() {
+		var lastErr string
+		for err := range errCh {
+			errStr := err.Error()
+			if errStr != lastErr {
+				lastErr = errStr
+				c.Logger.Println("proxy error:", errStr)
+			}
+		}
+	}()
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -118,9 +135,8 @@ func (c *Client) ListenAndServe(port uint16) error {
 		}
 		go func() {
 			defer conn.Close()
-			conn.SetDeadline(time.Time{})
 			if err := c.proxy(conn); err != nil {
-				c.Logger.Println("proxy error:", err)
+				errCh <- err
 			}
 		}()
 	}
