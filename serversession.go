@@ -23,6 +23,8 @@ type serverSession struct {
 	authenticated bool
 	logFilterMtx  sync.Mutex
 	logFilter     map[string]bool
+	dnsCacheMtx   sync.Mutex
+	dnsCache      map[string]net.IP
 }
 
 func (s *Server) newSession(conn io.ReadWriteCloser) (*serverSession, error) {
@@ -36,6 +38,7 @@ func (s *Server) newSession(conn io.ReadWriteCloser) (*serverSession, error) {
 		srv:       s,
 		session:   session,
 		logFilter: make(map[string]bool),
+		dnsCache:  make(map[string]net.IP),
 	}, nil
 }
 
@@ -119,8 +122,23 @@ func (s *serverSession) Allow(ctx context.Context, req *socks5.Request) (context
 
 // Resolve implements socks5.NameResolver
 func (s *serverSession) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
-	ip, err := s.resolve(name)
-	go s.filterLog("DNS: ", name, " -> ", ip)
+	s.dnsCacheMtx.Lock()
+	ip, ok := s.dnsCache[name]
+	s.dnsCacheMtx.Unlock()
+
+	var err error
+	if !ok {
+		ip, err = s.resolve(name)
+		if err != nil {
+			go s.filterLog("DNS error: ", name, " -> ", err)
+		} else {
+			s.log("DNS: ", name, " -> ", ip)
+			s.dnsCacheMtx.Lock()
+			s.dnsCache[name] = ip
+			s.dnsCacheMtx.Unlock()
+		}
+	}
+
 	return ctx, ip, err
 }
 
@@ -176,7 +194,7 @@ func (s *serverSession) filterLog(a ...interface{}) {
 		s.logFilter[reqStr] = true
 		s.srv.Logger.Printf("[%s] %s", s.id, reqStr)
 		go func() {
-			<-time.NewTimer(time.Minute * 5).C
+			time.Sleep(time.Minute * 5)
 			s.logFilterMtx.Lock()
 			defer s.logFilterMtx.Unlock()
 			delete(s.logFilter, reqStr)
