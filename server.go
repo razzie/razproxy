@@ -3,13 +3,18 @@ package razproxy
 import (
 	"crypto/tls"
 	"log"
+	"net"
 	"os"
+	"time"
+
+	"golang.org/x/time/rate"
 )
 
 // Server ...
 type Server struct {
 	auth        Authenticator
 	tlsConf     *tls.Config
+	rate        *rateLimiter
 	Logger      *log.Logger
 	ExternalDNS string
 }
@@ -36,6 +41,7 @@ func NewServer(auth Authenticator, certs ...tls.Certificate) (*Server, error) {
 	return &Server{
 		auth:    auth,
 		tlsConf: tlsConf,
+		rate:    newRateLimiter(rate.Every(time.Minute), 3),
 		Logger:  log.New(os.Stdout, "", log.LstdFlags),
 	}, nil
 }
@@ -54,6 +60,14 @@ func (s *Server) ListenAndServe(address string) error {
 			s.Logger.Println("connection accept error:", err)
 			continue
 		}
+
+		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+		if !s.rate.get(ip).Allow() {
+			s.Logger.Println("rate limit exceeded for IP:", ip)
+			conn.Close()
+			continue
+		}
+
 		session, err := s.newSession(conn)
 		if err != nil {
 			s.Logger.Println("smux error:", err)
