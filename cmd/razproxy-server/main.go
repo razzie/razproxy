@@ -15,6 +15,7 @@ var (
 	User        string
 	Password    string
 	ExternalDNS string
+	LAN         bool
 )
 
 func init() {
@@ -24,6 +25,7 @@ func init() {
 	flag.StringVar(&User, "user", "", "Username for auth")
 	flag.StringVar(&Password, "pw", "", "Password for auth")
 	flag.StringVar(&ExternalDNS, "dns", "", "External DNS address")
+	flag.BoolVar(&LAN, "lan", false, "Enable requests towards LAN and localhost IP address range")
 	flag.Parse()
 }
 
@@ -51,6 +53,7 @@ func main() {
 
 	srv, err := razproxy.NewServer(auth, *cert)
 	srv.ExternalDNS = ExternalDNS
+	srv.LAN = LAN
 	if err := srv.ListenAndServe(ServerAddr); err != nil {
 		panic(err)
 	}

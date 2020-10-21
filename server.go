@@ -17,6 +17,7 @@ type Server struct {
 	rate        *rateLimiter
 	Logger      *log.Logger
 	ExternalDNS string
+	LAN         bool
 }
 
 // NewServer returns a new Server

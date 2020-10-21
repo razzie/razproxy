@@ -48,7 +48,6 @@ func (s *serverSession) run() {
 	s.log(s.session.RemoteAddr().String(), " connected")
 
 	socks5Conf := &socks5.Config{
-		//Credentials: s.srv.auth,
 		Resolver: s,
 		Rules:    s,
 		Logger:   log.New(ioutil.Discard, "", 0),
@@ -116,8 +115,8 @@ func (s *serverSession) auth(user, pw string) (string, bool) {
 
 // Allow implements socks5.RuleSet
 func (s *serverSession) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
-	go s.filterLog(req.DestAddr.String())
-	return ctx, !isPrivateIP(req.DestAddr.IP)
+	go s.filterLog("PROXY: ", req.DestAddr.String())
+	return ctx, s.srv.LAN || !isPrivateIP(req.DestAddr.IP)
 }
 
 // Resolve implements socks5.NameResolver
