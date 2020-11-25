@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/miekg/dns v1.1.33
 	github.com/onsi/ginkgo v1.14.2 // indirect
 	github.com/onsi/gomega v1.10.3 // indirect

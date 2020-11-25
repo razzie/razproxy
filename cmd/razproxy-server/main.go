@@ -1,8 +1,9 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
+	"log"
+	"os"
 
 	"github.com/razzie/razproxy"
 )
@@ -29,32 +30,32 @@ func init() {
 	flag.Parse()
 }
 
-func getCert() (*tls.Certificate, error) {
-	if len(CertFile) > 0 {
-		if len(KeyFile) == 0 {
-			return razproxy.LoadCertficateAndKeyFromFile(CertFile)
-		}
-		cert, err := tls.LoadX509KeyPair(CertFile, KeyFile)
-		return &cert, err
-	}
-	return razproxy.GenerateCertificate("razproxy", "")
-}
-
 func main() {
-	cert, err := getCert()
-	if err != nil {
-		panic(err)
-	}
+	logger := log.New(os.Stdout, "", log.LstdFlags)
 
 	var auth razproxy.Authenticator
 	if len(User) > 0 {
 		auth = razproxy.BasicAuthenticator{User: Password}
 	}
 
-	srv, err := razproxy.NewServer(auth, *cert)
+	var certLoader razproxy.CertLoader
+	if len(CertFile) > 0 {
+		var err error
+		certLoader, err = razproxy.NewFileCertLoader(CertFile, KeyFile, logger)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	srv, err := razproxy.NewServer(auth, certLoader, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	srv.ExternalDNS = ExternalDNS
 	srv.LAN = LAN
+
 	if err := srv.ListenAndServe(ServerAddr); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

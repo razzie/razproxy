@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
-	"os"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -21,7 +20,18 @@ type Server struct {
 }
 
 // NewServer returns a new Server
-func NewServer(auth Authenticator, certs ...tls.Certificate) (*Server, error) {
+func NewServer(auth Authenticator, certLoader CertLoader, logger *log.Logger) (*Server, error) {
+	if auth == nil {
+		auth = &NilAuthenticator{}
+	}
+	if certLoader == nil {
+		var err error
+		certLoader, err = NewGeneratedCertLoader("razproxy", "")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	tlsConf := &tls.Config{
 		MinVersion:               tls.VersionTLS12,
 		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
@@ -32,18 +42,14 @@ func NewServer(auth Authenticator, certs ...tls.Certificate) (*Server, error) {
 			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 		},
-		Certificates: certs,
-	}
-
-	if auth == nil {
-		auth = &NilAuthenticator{}
+		GetCertificate: certLoader.GetCertificate,
 	}
 
 	return &Server{
 		auth:    auth,
 		tlsConf: tlsConf,
 		rate:    newRateLimiter(rate.Every(time.Minute), 3),
-		Logger:  log.New(os.Stdout, "", log.LstdFlags),
+		Logger:  logger,
 	}, nil
 }
 
